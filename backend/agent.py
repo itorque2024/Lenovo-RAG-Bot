@@ -49,45 +49,45 @@ def brave_search(query: str):
         return f"[Search Agent]: Error with Brave Search: {e}"
 
 def create_rag_tool(folder: str, agent_name: str, google_api_key: str):
-    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), folder)
-    docs = []
-    if os.path.exists(path):
-        for f in os.listdir(path):
-            if f.endswith(".txt"):
-                loader = TextLoader(os.path.join(path, f))
-                docs.extend(loader.load())
-    
-    if not docs:
+    try:
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), folder)
+        docs = []
+        if os.path.exists(path):
+            for f in os.listdir(path):
+                if f.endswith(".txt"):
+                    loader = TextLoader(os.path.join(path, f))
+                    docs.extend(loader.load())
+        
+        if not docs:
+            raise ValueError("No docs")
+
+        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=google_api_key)
+        vectorstore = FAISS.from_documents(docs, embeddings)
+        retriever = vectorstore.as_retriever()
+
         @tool(f"search_{folder}")
-        def empty_tool(query: str):
-            """Returns a warning that no data is available."""
-            return f"[{agent_name}]: No data files found for {folder} on the server."
-        return empty_tool
-
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=google_api_key)
-    vectorstore = FAISS.from_documents(docs, embeddings)
-    retriever = vectorstore.as_retriever()
-
-    @tool(f"search_{folder}")
-    def rag_tool(query: str):
-        """Useful for answering questions about Lenovo categories."""
-        results = retriever.invoke(query)
-        content = "\n".join([d.page_content for d in results])
-        return f"[{agent_name}]: Based on local files: {content}"
-    
-    return rag_tool
+        def rag_tool(query: str):
+            """Useful for answering questions about Lenovo categories."""
+            results = retriever.invoke(query)
+            content = "\n".join([d.page_content for d in results])
+            return f"[{agent_name}]: Based on local files: {content}"
+        return rag_tool
+    except:
+        # Fallback tool that won't crash the server
+        @tool(f"search_{folder}")
+        def fallback_tool(query: str):
+            """Returns a warning that local data is unavailable."""
+            return f"[{agent_name}]: I am currently unable to access local {folder} files. Please use web search."
+        return fallback_tool
 
 def initialize_agent():
     global _app_agent
     if _app_agent is not None:
         return _app_agent
 
-    print("🚀 Initializing LangGraph Agent...")
-    
-    # Get Key safely inside initialization
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if not api_key:
-        raise ValueError("GEMINI_API_KEY not found in environment!")
+        raise ValueError("GEMINI_API_KEY not found!")
 
     product_tool = create_rag_tool("product", "Product Agent", api_key)
     tech_tool = create_rag_tool("tech", "Tech Agent", api_key)
