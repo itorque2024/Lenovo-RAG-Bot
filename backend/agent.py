@@ -71,7 +71,10 @@ def create_rag_tool(folder: str, agent_name: str):
         return empty_tool
 
     # Using Google API embeddings (fast and lightweight)
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+    embeddings = GoogleGenerativeAIEmbeddings(
+        model="models/embedding-001",
+        google_api_key=os.getenv("GEMINI_API_KEY")
+    )
     vectorstore = FAISS.from_documents(docs, embeddings)
     retriever = vectorstore.as_retriever()
 
