@@ -70,10 +70,19 @@ def create_rag_tool(folder: str, agent_name: str):
             return f"[{agent_name}]: No data files found for {folder} on the server."
         return empty_tool
 
+    # Robust API key lookup
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        print("❌ ERROR: GEMINI_API_KEY not found in environment!")
+        @tool(name=f"search_{folder}")
+        def error_tool(query: str):
+            return f"[{agent_name}]: Configuration error. API key missing."
+        return error_tool
+
     # Using Google API embeddings (fast and lightweight)
     embeddings = GoogleGenerativeAIEmbeddings(
         model="models/embedding-001",
-        google_api_key=os.getenv("GEMINI_API_KEY")
+        google_api_key=api_key
     )
     vectorstore = FAISS.from_documents(docs, embeddings)
     retriever = vectorstore.as_retriever()
