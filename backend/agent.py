@@ -46,7 +46,6 @@ def brave_search(query: str):
 
 def create_rag_tool(folder: str, agent_name: str, google_api_key: str):
     try:
-        # Resolve absolute path to data folder
         base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         data_path = os.path.join(base_path, folder)
         
@@ -60,7 +59,8 @@ def create_rag_tool(folder: str, agent_name: str, google_api_key: str):
         if not docs:
             raise ValueError(f"No documents in {folder}")
 
-        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=google_api_key)
+        # Switched to text-embedding-004 (most stable production version)
+        embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=google_api_key)
         vectorstore = FAISS.from_documents(docs, embeddings)
         retriever = vectorstore.as_retriever()
 
@@ -98,7 +98,8 @@ def initialize_agent():
     class AgentState(TypedDict):
         messages: Annotated[List[BaseMessage], lambda x, y: x + y]
 
-    model = ChatGoogleGenerativeAI(model="gemini-1.5-flash-latest", google_api_key=api_key)
+    # Switched to gemini-1.5-flash (most stable production version)
+    model = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=api_key)
     model_with_tools = model.bind_tools(all_tools)
 
     def call_model(state):
