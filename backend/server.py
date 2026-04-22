@@ -19,7 +19,7 @@ async def get_api_key(api_key_header: str = Security(api_key_header)):
     raise HTTPException(status_code=403, detail="Unauthorized")
 
 # --- Endpoints ---
-@app.post("/chat")
+@app.post("/chat", dependencies=[Depends(get_api_key)])
 async def chat_endpoint(request: Request):
     data = await request.json()
     message = data.get("message")

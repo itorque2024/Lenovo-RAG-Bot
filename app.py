@@ -5,9 +5,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Backend API URL - Replace this with your actual Render API URL
-# Default is your local server from ./start_all.sh
+# Backend API URL - Replace this with your actual Render/Railway API URL
 API_URL = os.getenv("BACKEND_API_URL", "http://localhost:10000/chat")
+# The secret key set in your environment variables
+API_KEY = os.getenv("INTERNAL_API_KEY", "default_secret_key")
 
 def chat_with_agent(message, history):
     try:
@@ -17,7 +18,12 @@ def chat_with_agent(message, history):
             "history": history
         }
         
-        response = requests.post(API_URL, json=payload, timeout=90)
+        # WE MUST SEND THE API KEY IN THE HEADERS
+        headers = {
+            "X-API-KEY": API_KEY
+        }
+        
+        response = requests.post(API_URL, json=payload, headers=headers, timeout=90)
         response.raise_for_status()
         
         data = response.json()
