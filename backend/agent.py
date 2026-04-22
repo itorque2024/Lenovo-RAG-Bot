@@ -103,7 +103,7 @@ def initialize_agent():
 
     # Use standard production model name
     model = ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash", 
+        model="gemini-2.0-flash", 
         google_api_key=api_key
     )
     model_with_tools = model.bind_tools(all_tools)
