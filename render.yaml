@@ -1,34 +1,20 @@
 services:
-  # n8n Orchestrator
+  # Lenovo Multi-Agent RAG API (Pure Python)
   - type: web
-    name: n8n-lenovo-brain
-    env: docker
-    plan: free
-    region: ohio
-    dockerContext: .
-    dockerfilePath: n8n.Dockerfile
-    envVars:
-      - key: N8N_BASIC_AUTH_ACTIVE
-        value: "true"
-      - key: N8N_BASIC_AUTH_USER
-        value: admin
-      - key: N8N_BASIC_AUTH_PASSWORD
-        value: lenovo-rag-2026
-      - key: GEMINI_API_KEY
-        from_secret: GEMINI_API_KEY
-      - key: TELEGRAM_BOT_TOKEN
-        from_secret: TELEGRAM_BOT_TOKEN
-
-  # Data Server (FastAPI)
-  - type: web
-    name: lenovo-data-api
+    name: lenovo-ai-backend
     env: python
     plan: free
     region: ohio
-    buildCommand: pip install -r backend/requirements.txt
-    startCommand: uvicorn backend.server:app --host 0.0.0.0 --port 10000
+    buildCommand: pip install -r requirements.txt
+    startCommand: PYTHONPATH=$PYTHONPATH:. uvicorn backend.server:app --host 0.0.0.0 --port 10000
     envVars:
       - key: PYTHON_VERSION
         value: 3.10.0
       - key: INTERNAL_API_KEY
-        from_secret: INTERNAL_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: BRAVE_API_KEY
+        sync: false
