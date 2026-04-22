@@ -18,3 +18,5 @@ services:
         sync: false
       - key: BRAVE_API_KEY
         sync: false
+      - key: RUN_TELEGRAM
+        value: "true"

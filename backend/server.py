@@ -40,8 +40,13 @@ async def handle_telegram_message(update: Update, context: ContextTypes.DEFAULT_
     await update.message.reply_text(response_text)
 
 async def start_telegram():
+    # Only run the bot if specifically requested (Production)
+    if os.getenv("RUN_TELEGRAM") != "true":
+        print("ℹ️ RUN_TELEGRAM not set to 'true'. Bot disabled for local safety.")
+        return
+    
     if not TELEGRAM_TOKEN:
-        print("⚠️ TELEGRAM_BOT_TOKEN not found. Telegram bot disabled.")
+        print("⚠️ TELEGRAM_BOT_TOKEN not found.")
         return
     
     try:
