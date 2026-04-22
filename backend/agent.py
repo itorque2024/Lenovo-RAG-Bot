@@ -11,9 +11,13 @@ from langgraph.graph import StateGraph, END
 
 # ─── State ────────────────────────────────────────────────────────────────────
 
+class Task(TypedDict):
+    agent: str        # which agent handles this
+    sub_query: str    # only the portion of the question that agent should answer
+
 class AgentState(TypedDict):
-    query: str
-    agents_to_call: List[str]
+    query: str          # original full user query (kept for reference)
+    tasks: List[Task]   # decomposed sub-queries assigned to specific agents
     responses: List[dict]   # [{"agent": str, "text": str}]
     debug_log: str
 
@@ -75,50 +79,85 @@ def _get_retriever(folder: str):
 def router_node(state: AgentState) -> dict:
     router_prompt = """You are a Router for a Lenovo AI Assistant.
 
-Classify the user query into ONE OR MORE of these agents (comma-separated if multiple are needed):
+Your job is to DECOMPOSE the user query into one or more sub-questions and assign each to the correct agent.
+
+Available agents:
 - product_agent  : product specs, prices, models, ThinkPad, IdeaPad, Legion, Yoga
 - tech_agent     : troubleshooting, drivers, repair, how-to, technical support
 - policy_agent   : delivery, shipping, returns, refunds, warranty policy, payment
 - finance_agent  : currency conversion, price in SGD / USD / EUR or any other currency
 - search_agent   : current news, latest releases, real-time info not in local data
 
-Output ONLY the agent name(s) separated by commas. Example: product_agent,policy_agent
-If unsure, output: product_agent"""
+Rules:
+- Split multi-part questions so each agent only receives the portion it should answer
+- One line per task, format exactly as: agent_name|sub-question
+- Do not add explanation, numbering, or extra text
+
+Example input: "What is the price of the X1 Carbon and what is the return policy?"
+Example output:
+product_agent|What is the price of the X1 Carbon?
+policy_agent|What is the return policy?
+
+Example input: "How do I fix my ThinkPad screen and convert 1500 USD to SGD?"
+Example output:
+tech_agent|How do I fix my ThinkPad screen?
+finance_agent|Convert 1500 USD to SGD"""
 
     res = _get_llm().invoke([
         SystemMessage(content=router_prompt),
         HumanMessage(content=state["query"])
     ])
-    raw = res.content.strip().lower()
 
     valid = {"product_agent", "tech_agent", "policy_agent", "finance_agent", "search_agent"}
-    agents = [a.strip() for a in raw.split(",") if a.strip() in valid]
-    if not agents:
-        agents = ["product_agent"]
+    tasks: List[Task] = []
 
+    for line in res.content.strip().splitlines():
+        line = line.strip()
+        if "|" not in line:
+            continue
+        agent, sub_query = line.split("|", 1)
+        agent = agent.strip().lower()
+        sub_query = sub_query.strip()
+        if agent in valid and sub_query:
+            tasks.append({"agent": agent, "sub_query": sub_query})
+
+    # Fallback if parsing fails
+    if not tasks:
+        tasks = [{"agent": "product_agent", "sub_query": state["query"]}]
+
+    agents_listed = ", ".join(t["agent"] for t in tasks)
     return {
-        "agents_to_call": agents,
+        "tasks": tasks,
         "responses": [],
-        "debug_log": f"🚦 Router → {', '.join(agents)}"
+        "debug_log": f"🚦 Router decomposed into {len(tasks)} task(s): {agents_listed}"
     }
 
-# ─── Routing logic (shared by router + every agent node) ─────────────────────
+# ─── Routing logic ────────────────────────────────────────────────────────────
 
 def _route_next(state: AgentState) -> str:
-    agents = state.get("agents_to_call", [])
+    tasks = state.get("tasks", [])
     done = len(state.get("responses", []))
-    return agents[done] if done < len(agents) else END
+    return tasks[done]["agent"] if done < len(tasks) else END
 
 # ─── RAG helper ───────────────────────────────────────────────────────────────
 
+def _current_sub_query(state: AgentState) -> str:
+    """Returns the sub-query meant for the current agent (not the full query)."""
+    done = len(state.get("responses", []))
+    tasks = state.get("tasks", [])
+    if done < len(tasks):
+        return tasks[done]["sub_query"]
+    return state["query"]
+
+
 def _rag_node(state: AgentState, agent_name: str, folder: str, persona: str) -> dict:
-    query = state["query"]
+    sub_query = _current_sub_query(state)
     retriever = _get_retriever(folder)
 
     context = ""
     doc_count = 0
     if retriever:
-        docs = retriever.invoke(query)
+        docs = retriever.invoke(sub_query)
         context = "\n\n".join(d.page_content for d in docs)
         doc_count = len(docs)
 
@@ -130,14 +169,14 @@ Context:
 
     res = _get_llm().invoke([
         SystemMessage(content=system_prompt),
-        HumanMessage(content=query)
+        HumanMessage(content=sub_query)
     ])
 
     responses = list(state.get("responses", []))
     responses.append({"agent": agent_name, "text": res.content})
     return {
         "responses": responses,
-        "debug_log": state.get("debug_log", "") + f"\n✅ {agent_name}: used {doc_count} docs from '{folder}'"
+        "debug_log": state.get("debug_log", "") + f"\n✅ {agent_name} ← \"{sub_query}\" ({doc_count} docs)"
     }
 
 # ─── Agent Nodes ──────────────────────────────────────────────────────────────
@@ -155,7 +194,7 @@ def policy_agent_node(state: AgentState) -> dict:
 
 
 def finance_agent_node(state: AgentState) -> dict:
-    query = state["query"]
+    sub_query = _current_sub_query(state)
     try:
         parse_res = _get_llm().invoke([
             SystemMessage(content=(
@@ -163,7 +202,7 @@ def finance_agent_node(state: AgentState) -> dict:
                 "to_currency (3-letter ISO code). Reply ONLY as: amount,FROM,TO — e.g. 1499,USD,SGD. "
                 "If not specified, default from=USD to=SGD."
             )),
-            HumanMessage(content=query)
+            HumanMessage(content=sub_query)
         ])
         parts = parse_res.content.strip().split(",")
         amount = float(parts[0].strip())
@@ -183,12 +222,12 @@ def finance_agent_node(state: AgentState) -> dict:
     responses.append({"agent": "Finance Agent", "text": text})
     return {
         "responses": responses,
-        "debug_log": state.get("debug_log", "") + "\n✅ Finance Agent: currency converted"
+        "debug_log": state.get("debug_log", "") + f"\n✅ Finance Agent ← \"{sub_query}\""
     }
 
 
 def search_agent_node(state: AgentState) -> dict:
-    query = state["query"]
+    sub_query = _current_sub_query(state)
     api_key = os.getenv("BRAVE_API_KEY")
 
     if not api_key:
@@ -198,7 +237,7 @@ def search_agent_node(state: AgentState) -> dict:
             res = requests.get(
                 "https://api.search.brave.com/res/v1/web/search",
                 headers={"Accept": "application/json", "X-Subscription-Token": api_key},
-                params={"q": query, "count": 3},
+                params={"q": sub_query, "count": 3},
                 timeout=10
             )
             results = res.json().get("web", {}).get("results", [])
@@ -213,7 +252,7 @@ def search_agent_node(state: AgentState) -> dict:
     responses.append({"agent": "Search Agent", "text": text})
     return {
         "responses": responses,
-        "debug_log": state.get("debug_log", "") + "\n✅ Search Agent: web search done"
+        "debug_log": state.get("debug_log", "") + f"\n✅ Search Agent ← \"{sub_query}\""
     }
 
 # ─── Graph ────────────────────────────────────────────────────────────────────
@@ -223,7 +262,6 @@ def initialize_agent():
     if _graph:
         return _graph
 
-    # Pre-load retrievers at startup so first request is not slow
     for folder in ("product", "tech", "policy"):
         _get_retriever(folder)
 
@@ -236,11 +274,7 @@ def initialize_agent():
     wf.add_node("search_agent", search_agent_node)
 
     wf.set_entry_point("router")
-
-    # After router → pick first agent
     wf.add_conditional_edges("router", _route_next)
-
-    # After each agent → pick next agent or END
     for node in ("product_agent", "tech_agent", "policy_agent", "finance_agent", "search_agent"):
         wf.add_conditional_edges(node, _route_next)
 
@@ -252,7 +286,7 @@ async def get_agent_response(user_input: str) -> str:
     graph = initialize_agent()
     result = await graph.ainvoke({
         "query": user_input,
-        "agents_to_call": [],
+        "tasks": [],
         "responses": [],
         "debug_log": ""
     })
