@@ -2,14 +2,14 @@ fastapi
 uvicorn
 langchain
 langchain-community
-langchain-google-genai
+langchain-groq
+langchain-huggingface
 langgraph
+sentence-transformers
 python-telegram-bot
 requests
 beautifulsoup4
 markdownify
 python-dotenv
-duckduckgo-search
 pydantic
 faiss-cpu
-google-generativeai

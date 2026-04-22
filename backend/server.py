@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 import os
@@ -5,35 +6,16 @@ import asyncio
 import logging
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
-from backend.agent import get_agent_response
+from backend.agent import get_agent_response, initialize_agent
 
-# Set up logging to help us see exactly what's happening in Railway
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Lenovo AI Assistant")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ALLOWED_FOLDERS = {"product", "tech", "policy"}
 
-# --- Endpoints (Security REMOVED for immediate fix) ---
-@app.post("/chat")
-async def chat_endpoint(request: Request):
-    try:
-        data = await request.json()
-        message = data.get("message")
-        if not message:
-            return JSONResponse({"error": "No message"}, status_code=400)
-        
-        logger.info(f"Received query: {message}")
-        response = await get_agent_response(message)
-        return {"output": response}
-    except Exception as e:
-        logger.error(f"Error in /chat: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+# ─── Telegram ─────────────────────────────────────────────────────────────────
 
-@app.get("/health")
-async def health():
-    return {"status": "healthy"}
-
-# --- Telegram Bot ---
 async def handle_telegram_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
@@ -41,44 +23,77 @@ async def handle_telegram_message(update: Update, context: ContextTypes.DEFAULT_
     response_text = await get_agent_response(update.message.text)
     await update.message.reply_text(response_text)
 
+
 async def start_telegram():
     token = os.getenv("TELEGRAM_BOT_TOKEN")
-    # In cloud environments, PORT is usually defined. 
-    # We use this to detect if we are in production.
     is_cloud = "PORT" in os.environ or "RAILWAY_STATIC_URL" in os.environ
-    
-    if not token:
-        logger.warning("⚠️ TELEGRAM_BOT_TOKEN missing.")
-        return
 
+    if not token:
+        logger.warning("TELEGRAM_BOT_TOKEN missing — Telegram bot disabled.")
+        return
     if not is_cloud:
-        logger.info("ℹ️ Local environment detected. Skipping Telegram bot to avoid conflicts.")
+        logger.info("Local environment — Telegram bot skipped to avoid conflicts.")
         return
 
     try:
         application = Application.builder().token(token).build()
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_telegram_message))
-        
+        application.add_handler(
+            MessageHandler(filters.TEXT & ~filters.COMMAND, handle_telegram_message)
+        )
         await application.initialize()
         await application.start()
-        # drop_pending_updates=True is the cure for "Conflict" errors
         await application.updater.start_polling(drop_pending_updates=True)
-        logger.info("🚀 Telegram Bot is ONLINE and Polling.")
+        logger.info("Telegram Bot is ONLINE.")
     except Exception as e:
-        logger.error(f"❌ Telegram Error: {e}")
+        logger.error(f"Telegram error: {e}")
 
-@app.on_event("startup")
-async def startup_event():
+# ─── Lifespan ─────────────────────────────────────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Initializing agent and pre-loading retrievers...")
+    initialize_agent()
+    logger.info("Agent ready.")
     asyncio.create_task(start_telegram())
+    yield
 
-# File serving
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# ─── App ──────────────────────────────────────────────────────────────────────
+
+app = FastAPI(title="Lenovo AI Assistant", lifespan=lifespan)
+
+# ─── Endpoints ────────────────────────────────────────────────────────────────
+
+@app.post("/chat")
+async def chat_endpoint(request: Request):
+    try:
+        data = await request.json()
+        message = data.get("message")
+        if not message:
+            return JSONResponse({"error": "No message"}, status_code=400)
+        logger.info(f"Query: {message}")
+        response = await get_agent_response(message)
+        return {"output": response}
+    except Exception as e:
+        logger.error(f"Error in /chat: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy"}
+
+
 @app.get("/files/{folder}/{filename}")
 async def get_file(folder: str, filename: str):
-    file_path = os.path.join(BASE_DIR, folder, filename)
-    if os.path.exists(file_path):
-        return FileResponse(file_path)
-    raise HTTPException(status_code=404)
+    # Restrict to known folders and block path traversal
+    if folder not in ALLOWED_FOLDERS:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    safe_filename = os.path.basename(filename)
+    file_path = os.path.join(BASE_DIR, folder, safe_filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404)
+    return FileResponse(file_path)
+
 
 if __name__ == "__main__":
     import uvicorn
