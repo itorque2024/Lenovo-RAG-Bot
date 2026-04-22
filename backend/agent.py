@@ -84,7 +84,7 @@ def initialize_agent():
     class AgentState(TypedDict):
         messages: Annotated[List[BaseMessage], lambda x, y: x + y]
 
-    model = ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=api_key)
+    model = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=api_key)
     model_with_tools = model.bind_tools(all_tools)
 
     def call_model(state):
