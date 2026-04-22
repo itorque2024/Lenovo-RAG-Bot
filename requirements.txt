@@ -3,9 +3,8 @@ uvicorn
 langchain
 langchain-community
 langchain-groq
-langchain-huggingface
 langgraph
-sentence-transformers
+fastembed
 python-telegram-bot
 requests
 beautifulsoup4

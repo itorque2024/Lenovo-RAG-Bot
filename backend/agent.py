@@ -3,7 +3,7 @@ import requests
 from typing import List, TypedDict
 
 from langchain_groq import ChatGroq
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.embeddings import FastEmbedEmbeddings
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_community.document_loaders import TextLoader
 from langchain_community.vectorstores import FAISS
@@ -42,8 +42,8 @@ def _get_llm():
 def _get_embeddings():
     global _embeddings
     if _embeddings is None:
-        # Local model — no API calls, no quota usage
-        _embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        # ONNX-based local embeddings — no PyTorch, no API calls, ~80MB total
+        _embeddings = FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
     return _embeddings
 
 
