@@ -3,7 +3,6 @@ from typing import Annotated, List, Union
 from typing_extensions import TypedDict
 
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.tools import tool
 from langgraph.graph import StateGraph, END
@@ -12,7 +11,9 @@ from langchain_community.document_loaders import TextLoader
 from langchain_community.vectorstores import FAISS
 import requests
 
-# 1. Define Tools
+# --- Global State for Lazy Loading ---
+_app_agent = None
+
 @tool
 def currency_converter(amount: float, from_currency: str = "USD", to_currency: str = "SGD"):
     """Converts money from one currency to another using live rates."""
@@ -34,10 +35,7 @@ def brave_search(query: str):
         return "[Search Agent]: Brave API key is missing."
     
     url = "https://api.search.brave.com/res/v1/web/search"
-    headers = {
-        "Accept": "application/json",
-        "X-Subscription-Token": api_key
-    }
+    headers = {"Accept": "application/json", "X-Subscription-Token": api_key}
     params = {"q": query, "count": 3}
     
     try:
@@ -50,44 +48,27 @@ def brave_search(query: str):
     except Exception as e:
         return f"[Search Agent]: Error with Brave Search: {e}"
 
-# 2. RAG Tools (Product, Tech, Policy)
-def create_rag_tool(folder: str, agent_name: str):
+def create_rag_tool(folder: str, agent_name: str, google_api_key: str):
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), folder)
-    print(f"📂 Searching for data in: {path}")
     docs = []
     if os.path.exists(path):
         for f in os.listdir(path):
             if f.endswith(".txt"):
-                print(f"📄 Loading: {f}")
                 loader = TextLoader(os.path.join(path, f))
                 docs.extend(loader.load())
     
     if not docs:
-        print(f"⚠️ Warning: No documents found for {agent_name}")
-        @tool(name=f"search_{folder}")
+        @tool(f"search_{folder}")
         def empty_tool(query: str):
             """Returns a warning that no data is available."""
             return f"[{agent_name}]: No data files found for {folder} on the server."
         return empty_tool
 
-    # Robust API key lookup
-    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        print("❌ ERROR: GEMINI_API_KEY not found in environment!")
-        @tool(name=f"search_{folder}")
-        def error_tool(query: str):
-            return f"[{agent_name}]: Configuration error. API key missing."
-        return error_tool
-
-    # Using Google API embeddings (fast and lightweight)
-    embeddings = GoogleGenerativeAIEmbeddings(
-        model="models/embedding-001",
-        google_api_key=api_key
-    )
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=google_api_key)
     vectorstore = FAISS.from_documents(docs, embeddings)
     retriever = vectorstore.as_retriever()
 
-    @tool(name=f"search_{folder}")
+    @tool(f"search_{folder}")
     def rag_tool(query: str):
         """Useful for answering questions about Lenovo categories."""
         results = retriever.invoke(query)
@@ -96,54 +77,60 @@ def create_rag_tool(folder: str, agent_name: str):
     
     return rag_tool
 
-product_tool = create_rag_tool("product", "Product Agent")
-tech_tool = create_rag_tool("tech", "Tech Agent")
-policy_tool = create_rag_tool("policy", "Policy Agent")
+def initialize_agent():
+    global _app_agent
+    if _app_agent is not None:
+        return _app_agent
 
-tools = [product_tool, tech_tool, policy_tool, currency_converter, brave_search]
+    print("🚀 Initializing LangGraph Agent...")
+    
+    # Get Key safely inside initialization
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY not found in environment!")
 
-# 3. Define the Graph
-class AgentState(TypedDict):
-    messages: Annotated[List[BaseMessage], lambda x, y: x + y]
+    product_tool = create_rag_tool("product", "Product Agent", api_key)
+    tech_tool = create_rag_tool("tech", "Tech Agent", api_key)
+    policy_tool = create_rag_tool("policy", "Policy Agent", api_key)
+    
+    all_tools = [product_tool, tech_tool, policy_tool, currency_converter, brave_search]
 
-model = ChatGoogleGenerativeAI(model="gemini-1.5-flash", streaming=True)
-model_with_tools = model.bind_tools(tools)
+    class AgentState(TypedDict):
+        messages: Annotated[List[BaseMessage], lambda x, y: x + y]
 
-def call_model(state: AgentState):
-    messages = state['messages']
-    system_prompt = HumanMessage(content=(
-        "You are the Lenovo Multi-Agent Assistant. "
-        "Use specialists for specific tasks. "
-        "ALWAYS prefix your final answer parts with the agent name in brackets, e.g. [Product Agent]. "
-        "Answer all parts of complex queries."
-    ))
-    response = model_with_tools.invoke([system_prompt] + messages)
-    return {"messages": [response]}
+    model = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=api_key)
+    model_with_tools = model.bind_tools(all_tools)
 
-# 4. Build the Graph
-workflow = StateGraph(AgentState)
-workflow.add_node("agent", call_model)
-workflow.add_node("tools", ToolNode(tools))
-workflow.set_entry_point("agent")
+    def call_model(state: AgentState):
+        messages = state['messages']
+        system_prompt = HumanMessage(content="You are the Lenovo Multi-Agent Assistant. Always prefix answers with [Product Agent], etc.")
+        response = model_with_tools.invoke([system_prompt] + messages)
+        return {"messages": [response]}
 
-def should_continue(state: AgentState):
-    messages = state['messages']
-    last_message = messages[-1]
-    if last_message.tool_calls:
-        return "tools"
-    return END
+    workflow = StateGraph(AgentState)
+    workflow.add_node("agent", call_model)
+    workflow.add_node("tools", ToolNode(all_tools))
+    workflow.set_entry_point("agent")
+    
+    def should_continue(state: AgentState):
+        if state['messages'][-1].tool_calls: return "tools"
+        return END
 
-workflow.add_conditional_edges("agent", should_continue)
-workflow.add_edge("tools", "agent")
-
-app_agent = workflow.compile()
+    workflow.add_conditional_edges("agent", should_continue)
+    workflow.add_edge("tools", "agent")
+    
+    _app_agent = workflow.compile()
+    return _app_agent
 
 async def get_agent_response(user_input: str):
-    inputs = {"messages": [HumanMessage(content=user_input)]}
-    config = {"configurable": {"thread_id": "1"}}
-    final_output = ""
-    async for event in app_agent.astream(inputs, config=config):
-        for value in event.values():
-            if "messages" in value:
-                final_output = value["messages"][-1].content
-    return final_output
+    try:
+        agent = initialize_agent()
+        inputs = {"messages": [HumanMessage(content=user_input)]}
+        final_output = ""
+        async for event in agent.astream(inputs):
+            for value in event.values():
+                if "messages" in value:
+                    final_output = value["messages"][-1].content
+        return final_output
+    except Exception as e:
+        return f"❌ Agent Error: {e}"
