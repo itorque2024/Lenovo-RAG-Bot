@@ -4,7 +4,7 @@ from fastapi.responses import FileResponse, JSONResponse
 import os
 import asyncio
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from backend.agent import get_agent_response
 
 app = FastAPI(title="Lenovo Multi-Agent RAG API")
@@ -14,70 +14,49 @@ API_KEY = os.getenv("INTERNAL_API_KEY", "default_secret_key")
 api_key_header = APIKeyHeader(name="X-API-KEY")
 
 async def get_api_key(api_key_header: str = Security(api_key_header)):
-    if api_key_header == API_KEY:
-        return api_key_header
+    if api_key_header == API_KEY: return api_key_header
     raise HTTPException(status_code=403, detail="Unauthorized")
 
 # --- Endpoints ---
 @app.post("/chat", dependencies=[Depends(get_api_key)])
 async def chat_endpoint(request: Request):
-    data = await request.json()
-    message = data.get("message")
-    if not message:
-        return JSONResponse({"error": "No message"}, status_code=400)
-    
-    response = await get_agent_response(message)
-    return {"output": response}
+    try:
+        data = await request.json()
+        message = data.get("message")
+        if not message: return JSONResponse({"error": "No message"}, status_code=400)
+        response = await get_agent_response(message)
+        return {"output": response}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/health")
+async def health(): return {"status": "healthy"}
 
 # --- Telegram Bot ---
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-
 async def handle_telegram_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_text = update.message.text
-    if not user_text:
-        return
-    response_text = await get_agent_response(user_text)
+    if not update.message or not update.message.text: return
+    response_text = await get_agent_response(update.message.text)
     await update.message.reply_text(response_text)
 
 async def start_telegram():
-    # Only run the bot if specifically requested (Production)
-    if os.getenv("RUN_TELEGRAM") != "true":
-        print("ℹ️ RUN_TELEGRAM not set to 'true'. Bot disabled for local safety.")
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not token or os.getenv("RUN_TELEGRAM") != "true":
+        print("ℹ️ Telegram bot disabled.")
         return
-    
-    if not TELEGRAM_TOKEN:
-        print("⚠️ TELEGRAM_BOT_TOKEN not found.")
-        return
-    
     try:
-        application = Application.builder().token(TELEGRAM_TOKEN).build()
+        application = Application.builder().token(token).build()
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_telegram_message))
-        
         await application.initialize()
         await application.start()
-        # Add drop_pending_updates to clear any old conflict messages
-        await application.updater.start_polling(drop_pending_updates=True, poll_interval=1.0)
-        print("🚀 Telegram Bot is polling...")
+        await application.updater.start_polling(drop_pending_updates=True)
+        print("🚀 Telegram Bot is online.")
     except Exception as e:
-        print(f"❌ CRITICAL ERROR starting Telegram bot: {e}")
+        print(f"❌ Telegram Error: {e}")
 
 @app.on_event("startup")
-async def startup_event():
+async def startup():
     asyncio.create_task(start_telegram())
-
-# Existing file serving routes (simplified)
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-@app.get("/files/{folder}/{filename}")
-async def get_file(folder: str, filename: str):
-    file_path = os.path.join(BASE_DIR, folder, filename)
-    if os.path.exists(file_path):
-        return FileResponse(file_path)
-    raise HTTPException(status_code=404)
-
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=10000)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
