@@ -13,8 +13,20 @@ async def get_api_key(api_key_header: str = Security(api_key_header)):
         return api_key_header
     raise HTTPException(status_code=403, detail="Could not validate credentials")
 
-BASE_DIR = os.getcwd()
+# Get the project root directory (one level up from /backend)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FOLDERS = ["tech", "policy", "product"]
+LOG_FILE = os.path.join(BASE_DIR, "queries.log")
+
+def log_query(query: str, source: str):
+    import datetime
+    with open(LOG_FILE, "a") as f:
+        f.write(f"[{datetime.datetime.now()}] Source: {source} | Query: {query}\n")
+
+@app.post("/log", dependencies=[Depends(get_api_key)])
+async def log_user_query(data: dict):
+    log_query(data.get("query", "N/A"), data.get("source", "unknown"))
+    return {"status": "logged"}
 
 @app.get("/", dependencies=[Depends(get_api_key)])
 async def root():

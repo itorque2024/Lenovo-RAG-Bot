@@ -1,58 +1,74 @@
-# Lenovo RAG Multi-Agent Assistant
+# Lenovo RAG Multi-Agent Assistant (Production)
 
-A lightweight, multi-agent RAG chatbot powered by **Google Gemini**, orchestrated by **n8n**, and accessible via **Telegram** and a **Web/Mobile UI (Gradio)**.
+A secure, full-stack, multi-agent Retrieval-Augmented Generation (RAG) chatbot system. Powered by **Google Gemini**, orchestrated by **n8n**, and deployed on a distributed cloud architecture.
 
-## 🚀 Features
-- **Multi-Agent Architecture**: Specialized agents for Products, Tech Support, and Policies.
-- **Dynamic Routing**: Uses Gemini to route complex, multi-part queries to the correct specialists.
-- **RAG Capability**: Retrieves grounded information from local Markdown files.
-- **Web Search Fallback**: Automatically searches DuckDuckGo if local data is insufficient.
-- **Cross-Platform**: Accessible via a Gradio Web/Mobile link and Telegram.
-- **Agent Attribution**: Responses clearly show which agent provided which part of the answer.
+## 🌟 Features
 
-## 📁 Project Structure
-- `tech/`, `policy/`, `product/`: Local knowledge base (Markdown content in `.txt` files).
-- `app.py`: Gradio chat interface.
-- `server.py`: FastAPI server that exposes local files to n8n.
-- `download_data.py`: Script to refresh/scrape the latest Lenovo data.
-- `n8n_workflow_guide.md`: Step-by-step blueprint for the n8n orchestration.
-- `start_all.sh`: One-click script to start the UI and Data Server.
+### 1. Multi-Agent Intelligence
+- **Supervisor Agent (Gemini)**: Routes queries to specific specialists based on intent.
+- **Product Specialist**: Provides specs and pricing from the `product/` knowledge base.
+- **Tech Specialist**: Handles troubleshooting and repairs using the `tech/` knowledge base.
+- **Policy Specialist**: Manages inquiries about shipping, warranty, and returns from `policy/`.
+- **Search Specialist (DuckDuckGo)**: Fallback for current news or data not found locally.
 
-## 🛠️ Quick Start
+### 2. Specialized Capabilities (Tools)
+- **RAG Engine**: Dynamic retrieval from local Markdown files (`.txt` extension).
+- **Serial Number Validator**: Validates Lenovo SN formats (8 alphanumeric chars).
+- **Currency Converter**: Converts Lenovo USD pricing to SGD (or other local currencies).
+- **Query Logger**: Persistent server-side logging of all user interactions in `queries.log`.
 
-### 1. Prerequisites
-- [Conda](https://docs.conda.io/en/latest/miniconda.html) installed.
-- [n8n](https://n8n.io/) installed (Local or Cloud).
-- A **Google Gemini API Key** and a **Telegram Bot Token**.
+### 3. Cross-Platform Interfaces
+- **Web/Mobile UI**: Responsive Chat interface built with **Gradio**.
+- **Telegram Bot**: Full integration via n8n for mobile messaging.
 
-### 2. Setup Environment
-```bash
-# The project uses a dedicated conda environment
-conda activate lenovo-rag
+## 🛡️ Security & Integrity
+
+- **Environment Isolation**: The entire stack is contained within a dedicated `lenovo-rag` Conda environment.
+- **Data Protection**: 
+  - **X-API-KEY**: All cloud-hosted Data API endpoints are protected by a mandatory secret header.
+  - **Local Binding**: Local development server binds only to `127.0.0.1` to prevent unauthorized network access.
+- **Source Control**: Robust `.gitignore` prevents API keys, `.env` files, and local logs from being exposed on GitHub.
+- **n8n Security**: Configured for mandatory Basic Authentication.
+
+## 🏗️ Architecture
+
+1.  **Data API (FastAPI)**: Serves the knowledge base and tools (Hosted on Render).
+2.  **Orchestrator (n8n)**: The multi-agent brain that connects Gemini, Tools, and Triggers (Hosted on Render).
+3.  **Frontend (Gradio)**: The user interface that communicates with the n8n webhook (Hosted on Hugging Face).
+
+## 📁 Repository Structure
+```text
+.
+├── backend/
+│   ├── server.py           # FastAPI server (Data & Tools)
+│   ├── download_data.py    # Lenovo US scraper
+│   ├── scraper.py          # Category-based scraper
+│   └── .env.example        # Template for credentials
+├── product/                # Product knowledge base
+├── tech/                   # Tech Support knowledge base
+├── policy/                 # Policies knowledge base
+├── app.py                  # Gradio Web UI
+├── n8n_workflow_guide.md   # Step-by-step logic guide
+├── lenovo-n8n-workflow.json # Importable n8n logic
+├── render.yaml             # Blueprint for Render deployment
+├── n8n.Dockerfile          # Container for cloud n8n
+├── start_all.sh            # Unified server launcher
+└── README.md               # This document
 ```
 
-### 3. Fetch Data
-```bash
-python download_data.py
-```
+## 🚀 Quick Start (GCP/Cloud Ready)
 
-### 4. Configure n8n
-Follow the instructions in **`n8n_workflow_guide.md`** to set up your agents and tools. Make sure to use the **Gemini** model and connect the **DuckDuckGo** search node.
+1.  **Initialize Environment**:
+    `conda activate lenovo-rag`
+2.  **Start Services**:
+    `./start_all.sh`
+3.  **Deploy Backend**:
+    Push this repo to a **Private** GitHub repository and connect it to **Render** using the "Blueprint" feature.
+4.  **Import Workflow**:
+    Copy the contents of `lenovo-n8n-workflow.json` and paste them into your n8n cloud dashboard.
+5.  **Set Secrets**:
+    Configure `GEMINI_API_KEY`, `TELEGRAM_BOT_TOKEN`, and `INTERNAL_API_KEY` in your cloud dashboard.
 
-### 5. Launch the Chatbot
-```bash
-chmod +x start_all.sh
-./start_all.sh
-```
-- Open the `.gradio.live` link provided in the terminal to access the Web UI.
-- Open your Telegram bot to start messaging!
-
-## 🌐 Deployment
-- **Frontend (Gradio)**: Deploy to [Hugging Face Spaces](https://huggingface.co/spaces) using `requirements-gradio.txt`.
-- **Backend (n8n)**: Deploy to [Render](https://render.com/) using the provided `render.yaml`.
-
-## ⚙️ Configuration
-Copy `.env.example` to `.env` and fill in your keys:
-- `GEMINI_API_KEY`: Your Google AI Studio key.
-- `TELEGRAM_BOT_TOKEN`: From @BotFather.
-- `N8N_WEBHOOK_URL`: Your active n8n production webhook.
+## 🛠️ Maintenance
+To refresh the local knowledge base with the latest Lenovo US data, run:
+`python backend/download_data.py`
