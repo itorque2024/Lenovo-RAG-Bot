@@ -2,7 +2,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 import os
-import asyncio
 import logging
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
@@ -14,7 +13,10 @@ logger = logging.getLogger(__name__)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ALLOWED_FOLDERS = {"product", "tech", "policy"}
 
-# ─── Telegram ─────────────────────────────────────────────────────────────────
+# ─── Telegram setup ───────────────────────────────────────────────────────────
+
+_telegram_app: Application | None = None
+
 
 async def handle_telegram_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
@@ -24,38 +26,48 @@ async def handle_telegram_message(update: Update, context: ContextTypes.DEFAULT_
     await update.message.reply_text(response_text)
 
 
-async def start_telegram():
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
-    is_cloud = "PORT" in os.environ or "RAILWAY_STATIC_URL" in os.environ
-
-    if not token:
-        logger.warning("TELEGRAM_BOT_TOKEN missing — Telegram bot disabled.")
-        return
-    if not is_cloud:
-        logger.info("Local environment — Telegram bot skipped to avoid conflicts.")
-        return
-
-    try:
-        application = Application.builder().token(token).build()
-        application.add_handler(
-            MessageHandler(filters.TEXT & ~filters.COMMAND, handle_telegram_message)
-        )
-        await application.initialize()
-        await application.start()
-        await application.updater.start_polling(drop_pending_updates=True)
-        logger.info("Telegram Bot is ONLINE.")
-    except Exception as e:
-        logger.error(f"Telegram error: {e}")
+async def setup_telegram_webhook(application: Application, webhook_url: str):
+    await application.bot.set_webhook(
+        url=f"{webhook_url}/telegram/webhook",
+        drop_pending_updates=True
+    )
+    logger.info(f"Telegram webhook set → {webhook_url}/telegram/webhook")
 
 # ─── Lifespan ─────────────────────────────────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _telegram_app
+
     logger.info("Initializing agent and pre-loading retrievers...")
     initialize_agent()
     logger.info("Agent ready.")
-    asyncio.create_task(start_telegram())
+
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    webhook_url = os.getenv("WEBHOOK_URL") or os.getenv("RAILWAY_STATIC_URL")
+
+    if token and webhook_url:
+        # Webhook mode — reliable on cloud (Telegram calls us, we don't poll)
+        webhook_url = webhook_url.rstrip("/")
+        _telegram_app = Application.builder().token(token).updater(None).build()
+        _telegram_app.add_handler(
+            MessageHandler(filters.TEXT & ~filters.COMMAND, handle_telegram_message)
+        )
+        await _telegram_app.initialize()
+        await _telegram_app.start()
+        await setup_telegram_webhook(_telegram_app, webhook_url)
+    elif token:
+        logger.warning(
+            "TELEGRAM_BOT_TOKEN set but WEBHOOK_URL is missing — Telegram disabled. "
+            "Set WEBHOOK_URL to your Railway public URL."
+        )
+    else:
+        logger.info("No TELEGRAM_BOT_TOKEN — Telegram bot disabled.")
+
     yield
+
+    if _telegram_app:
+        await _telegram_app.stop()
 
 # ─── App ──────────────────────────────────────────────────────────────────────
 
@@ -83,9 +95,19 @@ async def health():
     return {"status": "healthy"}
 
 
+@app.post("/telegram/webhook")
+async def telegram_webhook(request: Request):
+    """Telegram calls this endpoint when a user sends a message."""
+    if _telegram_app is None:
+        raise HTTPException(status_code=503, detail="Telegram bot not configured")
+    data = await request.json()
+    update = Update.de_json(data, _telegram_app.bot)
+    await _telegram_app.process_update(update)
+    return {"ok": True}
+
+
 @app.get("/files/{folder}/{filename}")
 async def get_file(folder: str, filename: str):
-    # Restrict to known folders and block path traversal
     if folder not in ALLOWED_FOLDERS:
         raise HTTPException(status_code=403, detail="Forbidden")
     safe_filename = os.path.basename(filename)
