@@ -18,6 +18,8 @@ npm-debug.log*
 data_server.log
 output.log
 *.txt
+!requirements.txt
+!requirements-gradio.txt
 !tech/*.txt
 !policy/*.txt
 !product/*.txt
