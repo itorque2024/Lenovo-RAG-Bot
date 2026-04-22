@@ -1,88 +1,75 @@
-from fastapi import FastAPI, HTTPException, Security, Depends
+from fastapi import FastAPI, HTTPException, Security, Depends, Request
 from fastapi.security.api_key import APIKeyHeader
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 import os
+import asyncio
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from .agent import get_agent_response
 
-app = FastAPI(title="Lenovo Data Server")
+app = FastAPI(title="Lenovo Multi-Agent RAG API")
 
+# --- Security ---
 API_KEY = os.getenv("INTERNAL_API_KEY", "default_secret_key")
 api_key_header = APIKeyHeader(name="X-API-KEY")
 
 async def get_api_key(api_key_header: str = Security(api_key_header)):
     if api_key_header == API_KEY:
         return api_key_header
-    raise HTTPException(status_code=403, detail="Could not validate credentials")
+    raise HTTPException(status_code=403, detail="Unauthorized")
 
-# Get the project root directory (one level up from /backend)
+# --- Endpoints ---
+@app.post("/chat")
+async def chat_endpoint(request: Request):
+    data = await request.json()
+    message = data.get("message")
+    if not message:
+        return JSONResponse({"error": "No message"}, status_code=400)
+    
+    response = await get_agent_response(message)
+    return {"output": response}
+
+# --- Telegram Bot ---
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+
+async def handle_telegram_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_text = update.message.text
+    if not user_text:
+        return
+    response_text = await get_agent_response(user_text)
+    await update.message.reply_text(response_text)
+
+async def start_telegram():
+    if not TELEGRAM_TOKEN:
+        print("⚠️ Telegram token missing. Bot disabled.")
+        return
+    try:
+        application = Application.builder().token(TELEGRAM_TOKEN).build()
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_telegram_message))
+        await application.initialize()
+        await application.start()
+        await application.updater.start_polling()
+        print("🚀 Telegram Bot is polling...")
+    except Exception as e:
+        print(f"❌ Failed to start Telegram bot: {e}")
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(start_telegram())
+
+# Existing file serving routes (simplified)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FOLDERS = ["tech", "policy", "product"]
-LOG_FILE = os.path.join(BASE_DIR, "queries.log")
-
-def log_query(query: str, source: str):
-    import datetime
-    with open(LOG_FILE, "a") as f:
-        f.write(f"[{datetime.datetime.now()}] Source: {source} | Query: {query}\n")
-
-@app.post("/log", dependencies=[Depends(get_api_key)])
-async def log_user_query(data: dict):
-    log_query(data.get("query", "N/A"), data.get("source", "unknown"))
-    return {"status": "logged"}
-
-@app.get("/", dependencies=[Depends(get_api_key)])
-async def root():
-    files = {}
-    for folder in FOLDERS:
-        if os.path.exists(folder):
-            files[folder] = [f for f in os.listdir(folder) if f.endswith('.txt')]
-    return {
-        "message": "Lenovo Data Server is Online",
-        "available_files": files,
-        "usage": "Use /files/{folder}/{filename} to fetch content"
-    }
-
-@app.get("/files/{folder}/{filename}", dependencies=[Depends(get_api_key)])
+@app.get("/files/{folder}/{filename}")
 async def get_file(folder: str, filename: str):
-    if folder not in FOLDERS:
-        raise HTTPException(status_code=404, detail="Folder not found")
-    
     file_path = os.path.join(BASE_DIR, folder, filename)
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="File not found")
-    
-    return FileResponse(file_path)
+    if os.path.exists(file_path):
+        return FileResponse(file_path)
+    raise HTTPException(status_code=404)
 
-@app.get("/list", dependencies=[Depends(get_api_key)])
-async def list_files():
-    files = {}
-    for folder in FOLDERS:
-        if os.path.exists(folder):
-            files[folder] = os.listdir(folder)
-    return files
-
-@app.get("/tools/validate-sn/{sn}", dependencies=[Depends(get_api_key)])
-async def validate_sn(sn: str):
-    # Lenovo serial numbers are usually 8 characters, alphanumeric
-    is_valid = len(sn) == 8 and sn.isalnum()
-    return {
-        "serial_number": sn,
-        "is_valid_format": is_valid,
-        "message": "Format is correct (8 alphanumeric characters)" if is_valid else "Invalid format. Lenovo SNs are usually 8 alphanumeric characters."
-    }
-
-@app.get("/tools/convert-price/{usd_amount}", dependencies=[Depends(get_api_key)])
-async def convert_price(usd_amount: float):
-    # Mock conversion (you can connect to a real API in n8n)
-    # Using a fixed rate for demo purposes (1 USD = 1.35 SGD)
-    rate = 1.35 
-    sgd_amount = round(usd_amount * rate, 2)
-    return {
-        "usd": usd_amount,
-        "sgd": sgd_amount,
-        "rate": rate,
-        "currency": "SGD"
-    }
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
 
 if __name__ == "__main__":
     import uvicorn
-    # Changed to 127.0.0.1 for security (Localhost only)
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=10000)

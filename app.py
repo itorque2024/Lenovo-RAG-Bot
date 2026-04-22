@@ -5,50 +5,39 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# n8n Webhook URL - Replace this with your actual n8n webhook URL
-# If running locally, you might need to use ngrok to expose it
-N8N_WEBHOOK_URL = os.getenv("N8N_WEBHOOK_URL", "http://localhost:5678/webhook/lenovo-chat")
+# Backend API URL - Replace this with your actual Render API URL
+# Default is your local server from ./start_all.sh
+API_URL = os.getenv("BACKEND_API_URL", "http://localhost:10000/chat")
 
-def chat_with_n8n(message, history):
+def chat_with_agent(message, history):
     try:
         payload = {
             "message": message,
             "source": "web_ui",
-            "history": history # Sending history to n8n for context
+            "history": history
         }
         
-        response = requests.post(N8N_WEBHOOK_URL, json=payload, timeout=60)
+        response = requests.post(API_URL, json=payload, timeout=90)
         response.raise_for_status()
         
         data = response.json()
-        
-        # Handle different potential n8n response formats
-        # We expect a string or an object with an 'output' field
-        # The output should ideally look like "[Agent Name]: ... \n\n [Agent Name]: ..."
-        if isinstance(data, list) and len(data) > 0:
-            output = data[0].get("output", str(data[0]))
-        elif isinstance(data, dict):
-            output = data.get("output", str(data))
-        else:
-            output = str(data)
-            
-        return output
+        return data.get("output", "Error: No response from agent.")
             
     except Exception as e:
-        return f"⚠️ **Error connecting to n8n backend:** {e}\n\n*Make sure your n8n workflow is active and the webhook URL is correct.*"
+        return f"⚠️ **Error connecting to AI backend:** {e}\n\n*Make sure your backend is active and the URL is correct.*"
 
-# Build Gradio Chat Interface with a more modern look
+# Build Gradio Chat Interface
 view = gr.ChatInterface(
-    fn=chat_with_n8n,
-    title="Lenovo Multi-Agent Assistant",
-    description="### 🤖 Powered by Gemini + n8n RAG\nI can answer questions about products, tech support, and policies. If I don't know the answer, I'll search the web!",
+    fn=chat_with_agent,
+    title="Lenovo AI Multi-Agent Assistant",
+    description="### 🤖 Powered by Gemini + LangGraph\nI can answer questions about products, tech support, and policies. If I don't know the answer, I'll search the web!",
     examples=[
         "What are the specs of the ThinkPad X1 Carbon and what is the return policy?",
-        "How do I find my serial number?",
-        "Is there a warranty for the laptop battery?"
+        "How much is the Yoga 7i in SGD?",
+        "How do I find my serial number?"
     ],
     cache_examples=False,
 )
 
 if __name__ == "__main__":
-    view.launch(share=True) # share=True gives you a temporary public URL
+    view.launch(share=True)
