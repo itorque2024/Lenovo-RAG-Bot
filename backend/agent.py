@@ -71,7 +71,9 @@ def initialize_agent():
     if _app_agent: return _app_agent
     
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-    if not api_key: raise ValueError("GEMINI_API_KEY MISSING")
+    if not api_key: 
+        print("⚠️ GEMINI_API_KEY is missing!")
+        return None
 
     all_tools = [
         create_rag_tool("product", "Product Agent", api_key),
@@ -88,7 +90,7 @@ def initialize_agent():
     model_with_tools = model.bind_tools(all_tools)
 
     def call_model(state):
-        sys_msg = HumanMessage(content="You are the Lenovo Assistant. Answer accurately using local data if available. Prefix answers with [Agent Name].")
+        sys_msg = HumanMessage(content="You are the Lenovo Assistant. Prefix answers with [Agent Name].")
         return {"messages": [model_with_tools.invoke([sys_msg] + state['messages'])]}
 
     workflow = StateGraph(AgentState)
@@ -103,7 +105,8 @@ def initialize_agent():
 async def get_agent_response(user_input: str):
     try:
         agent = initialize_agent()
+        if not agent: return "❌ Bot configuration error: API Key missing in cloud variables."
         result = await agent.ainvoke({"messages": [HumanMessage(content=user_input)]})
         return result["messages"][-1].content
     except Exception as e:
-        return f"❌ Error: {e}"
+        return f"❌ Agent Error: {e}"
