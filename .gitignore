@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv
+env/
+venv/
+build/
+dist/
+
+# Node / n8n
+node_modules/
+npm-debug.log*
+.n8n/
+
+# Project Specific
+data_server.log
+output.log
+*.txt
+!tech/*.txt
+!policy/*.txt
+!product/*.txt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+credentials.json
+*.pem
+*.key

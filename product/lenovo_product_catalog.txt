@@ -1,0 +1,61 @@
+Lenovo Product Catalog — US (April 2026)
+========================================
+
+ThinkPad — Business Performance & Durability
+--------------------------------------------
+
+1. ThinkPad X1 Carbon Gen 12
+- Starting Price: From $1,499
+- Key Specs:
+  * Intel Core Ultra 7 processor
+  * 14" OLED or IPS display options
+  * Ultra-light (~2.4 lbs) carbon fiber chassis
+- Link: https://www.lenovo.com/us/en/p/laptops/thinkpad/thinkpadx1/thinkpad-x1-carbon-gen-12/len101t0083
+
+2. ThinkPad T14s Gen 5
+- Starting Price: From $1,250
+- Key Specs:
+  * AMD Ryzen 7 PRO or Intel Core Ultra
+  * 14" WUXGA display
+  * Long battery life, built-in security features
+- Link: https://www.lenovo.com/us/en/p/laptops/thinkpad/thinkpadt/thinkpad-t14s-gen-5-(14-inch-amd)/len101t0093
+
+
+Yoga — Premium 2-in-1 Creativity
+--------------------------------
+
+3. Yoga 7i Gen 9 (14" Intel)
+- Starting Price: From $790
+- Key Specs:
+  * Intel Core Ultra 7
+  * 14" 2.8K OLED Multi-touch display
+  * 360-degree hinge, Active Pen support
+- Link: https://www.lenovo.com/us/en/p/laptops/yoga/yoga-2-in-1-series/yoga-7i-gen-9-14-inch-intel/len101y0043
+
+4. Yoga Slim 7x
+- Starting Price: From $1,199
+- Key Specs:
+  * Snapdragon X Elite processor
+  * 14.5" 3K PureSight OLED
+  * Ultra-thin design, Copilot+ PC features
+- Link: https://www.lenovo.com/us/en/p/laptops/yoga/yoga-slim-series/yoga-slim-7x-gen-9-(14-inch-snapdragon)/len101y0049
+
+
+Legion & LOQ — High-Performance Gaming
+--------------------------------------
+
+5. Legion Pro 5i Gen 9
+- Starting Price: From $1,299
+- Key Specs:
+  * Intel Core i9-14900HX
+  * NVIDIA GeForce RTX 4070 Laptop GPU
+  * 16" WQXGA 240Hz display
+- Link: https://www.lenovo.com/us/en/p/laptops/legion-laptops/legion-5-series/legion-pro-5i-gen-9-(16-inch-intel)/len101g0033
+
+6. LOQ 15IRX9
+- Starting Price: From $850
+- Key Specs:
+  * Intel Core i5-13450HX
+  * NVIDIA GeForce RTX 4050
+  * Entry-level gaming performance
+- Link: https://www.lenovo.com/us/en/p/laptops/loq-laptops/lenovo-loq-15irx9/len101q0001

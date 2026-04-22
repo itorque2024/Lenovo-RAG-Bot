@@ -1,0 +1,44 @@
+Returns & Refunds — Lenovo US
+==============================
+
+Lenovo wants you to be satisfied with your purchase. If you are not happy with your item and need to return it, we have a straightforward process to help.
+
+Return Windows
+--------------
+Returns must be initiated within the following timeframes from the date of the invoice:
+- **Lenovo.com:** 30 calendar days.
+- **Lenovo Outlet:** 14 calendar days.
+- **LenovoPRO:** 45 calendar days.
+
+Returns Policy
+--------------
+For most consumer and business products (excluding servers and large volume orders), Lenovo offers **FREE returns** with no shipping or restocking fees if processed within the return window.
+
+**Exceptions:**
+- A **15% restocking fee** may apply to server and storage products, and orders of more than 5 units.
+- Items must be returned in their original packaging with all included accessories, manuals, and software.
+- Software once opened (unsealed) is generally non-returnable.
+
+How to Return An Item
+---------------------
+To initiate a return, follow these steps:
+1. Visit the [Lenovo Order Lookup](https://www.lenovo.com/us/en/trackmyorder) page.
+2. Enter your order number and email address to find your order.
+3. Select the items you wish to return and follow the prompts to request a **Return Merchandise Authorization (RMA)** number.
+4. You will receive a pre-paid shipping label via email. Print it and affix it to your return box.
+5. Drop off the package at the designated carrier location (typically UPS).
+
+Refunds
+-------
+Your refund will be issued after the Lenovo Return Center receives and inspects your item (usually within 5–10 business days).
+- **Credit Card:** Refunds are sent to the card-issuing bank within 3 business days of receipt.
+- **PayPal/Other:** Refunds are processed back to the original source.
+- Please note it may take an additional 2–10 business days for the credit to appear on your bank statement.
+
+Incorrect or Damaged Items
+--------------------------
+If you received the wrong product or it arrived damaged, please contact Lenovo Customer Support immediately at 1-855-253-6686. We will arrange for a replacement or a full refund at no cost to you.
+
+Exchanges
+---------
+Lenovo does not offer direct in-store exchanges. If you want a different model, you must return the original item for a refund and place a new order for the desired product.

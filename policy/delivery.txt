@@ -1,0 +1,35 @@
+Shipping & Pickup — Lenovo US
+==============================
+
+You can purchase your items online at Lenovo.com and have them delivered directly to your door. Lenovo offers a variety of shipping options to ensure your products arrive when you need them.
+
+Delivery Options
+----------------
+Lenovo offers FREE standard shipping on most web orders. Delivery timeframes vary based on the item’s availability and your location.
+- **Standard Shipping:** Generally 4–9 business days after the ship date.
+- **Expedited Shipping:** 1–4 business days.
+- **Next Day Air:** Available for select "Ready to Ship" models if ordered before 3:00 PM EST.
+
+Once you have placed an order, you can visit the Lenovo Order Status page to track your shipment. You will receive a shipping confirmation email with a UPS or FedEx tracking number once your package leaves the warehouse.
+
+Shipping Restrictions
+---------------------
+- **P.O. Boxes:** Lenovo does NOT ship to P.O. Boxes, APO/FPO addresses, or freight forwarders.
+- **International Shipping:** Lenovo.com (US) ships only within the 50 United States, Puerto Rico, the U.S. Virgin Islands, and Guam.
+- **Signature Requirement:** For security reasons, a signature is required upon delivery for all orders exceeding $200.
+
+Notes about delivery
+--------------------
+- Most deliveries are handled by UPS or FedEx.
+- Orders containing multiple items may ship from different warehouses and arrive at different times.
+- For custom-built (CTO) PCs, the estimated ship date is provided during the configuration process and reflects the time needed to assemble your specific machine.
+
+Lenovo Pickup Options
+---------------------
+Lenovo does not operate a traditional network of retail stores like Apple. However, select "Ready to Ship" items may be available for pickup at partner locations such as Best Buy or FedEx Office locations via the "Hold for Pickup" option in the carrier’s tracking portal once the item is in transit.
+
+What's Next?
+------------
+1. **Order Confirmation:** Sent immediately after the order is placed.
+2. **Shipping Notification:** Sent when the item leaves the warehouse, containing your tracking number.
+3. **Delivery Notification:** Sent by the carrier once the package has been signed for or delivered.

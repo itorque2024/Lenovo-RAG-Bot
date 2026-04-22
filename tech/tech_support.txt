@@ -1,0 +1,53 @@
+🛠️ Lenovo Technical Support & Recovery Knowledge Base
+=====================================================
+
+This document provides comprehensive technical procedures for troubleshooting, repairing, and configuring Lenovo hardware and software.
+
+1. Self-Service Repair (CRU)
+----------------------------
+Lenovo provides "Customer Replaceable Units" (CRUs) for many of its products. These are parts that can be replaced by the user without voiding the warranty.
+- **Self-Help Manuals:** Access model-specific Hardware Maintenance Manuals (HMM) on the Lenovo Support site for step-by-step disassembly instructions.
+- **Parts Ordering:** Genuine Lenovo parts can be ordered via the "Parts" section on pcsupport.lenovo.com by entering your system serial number.
+
+2. Software Tools & Diagnostics
+-------------------------------
+### Lenovo Vantage
+- **Purpose:** The primary dashboard for managing your Lenovo PC.
+- **Features:** Hardware scans, system updates (BIOS/Drivers), and warranty status checks.
+- **Usage:** Pre-installed on all Lenovo Windows PCs; also available on the Microsoft Store.
+
+### Lenovo Diagnostics (UEFI/Windows)
+- **Purpose:** Deep hardware-level testing of CPU, RAM, Storage, and GPU.
+- **Access:** Press **F10** during the Lenovo splash screen to launch the built-in UEFI diagnostics.
+
+3. Recovery & OS Reinstallation
+-------------------------------
+### Digital Download Recovery Service (DDRS)
+- **Purpose:** Create a USB recovery drive to restore your PC to its factory-original state.
+- **Requirements:** 16GB+ USB drive, your system’s serial number, and a Lenovo ID.
+- **Process:** Visit `support.lenovo.com/lenovorecovery` to request a download link.
+
+### Emergency Reset Hole
+- **Purpose:** For laptops with internal batteries that become unresponsive (won't turn on or wake up).
+- **Procedure:** Use a straightened paperclip to press the reset button located in a small hole on the bottom of the laptop for 10 seconds.
+
+4. BIOS/UEFI & Boot Management
+------------------------------
+| Task | Key Sequence |
+| :--- | :--- |
+| **Enter BIOS Setup** | Press **F1** or **F2** repeatedly at startup. |
+| **Boot Menu (Select Drive)** | Press **F12** at startup. |
+| **System Recovery** | Press **F11** or use the **Novo Button** (small button with a curved arrow icon on the side of the chassis). |
+
+### Flea Power Drain (Hard Reset)
+If the system fails to boot:
+1. Unplug the AC power adapter.
+2. Hold the **Power Button** for 30–60 seconds.
+3. Reconnect the AC adapter and attempt to turn it on.
+
+5. Official Documentation Directory
+-----------------------------------
+- **Main Support:** pcsupport.lenovo.com
+- **Drivers & Software:** support.lenovo.com/drivers
+- **Parts Lookup:** support.lenovo.com/partslookup
+- **Warranty Lookup:** support.lenovo.com/warrantylookup
