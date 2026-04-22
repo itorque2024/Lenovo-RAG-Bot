@@ -12,5 +12,3 @@ python-dotenv
 duckduckgo-search
 pydantic
 faiss-cpu
-langchain-huggingface
-sentence-transformers

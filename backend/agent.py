@@ -2,16 +2,14 @@ import os
 from typing import Annotated, List, Union
 from typing_extensions import TypedDict
 
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_community.tools.tavily_search import TavilySearchResults
-from langchain_community.tools import YouTubeSearchTool
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.tools import tool
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langchain_community.document_loaders import TextLoader
 from langchain_community.vectorstores import FAISS
-from langchain_huggingface import HuggingFaceEmbeddings
 import requests
 
 # 1. Define Tools
@@ -54,7 +52,6 @@ def brave_search(query: str):
 
 # 2. RAG Tools (Product, Tech, Policy)
 def create_rag_tool(folder: str, agent_name: str):
-    # Load all files in folder
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), folder)
     print(f"📂 Searching for data in: {path}")
     docs = []
@@ -73,13 +70,13 @@ def create_rag_tool(folder: str, agent_name: str):
             return f"[{agent_name}]: No data files found for {folder} on the server."
         return empty_tool
 
-    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    # Using Google API embeddings (fast and lightweight)
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
     vectorstore = FAISS.from_documents(docs, embeddings)
     retriever = vectorstore.as_retriever()
 
     @tool(name=f"search_{folder}")
     def rag_tool(query: str):
-        # Explicit docstring for the tool
         """Useful for answering questions about Lenovo categories."""
         results = retriever.invoke(query)
         content = "\n".join([d.page_content for d in results])
@@ -102,7 +99,6 @@ model_with_tools = model.bind_tools(tools)
 
 def call_model(state: AgentState):
     messages = state['messages']
-    # Add system prompt for multi-agent behavior
     system_prompt = HumanMessage(content=(
         "You are the Lenovo Multi-Agent Assistant. "
         "Use specialists for specific tasks. "
@@ -116,7 +112,6 @@ def call_model(state: AgentState):
 workflow = StateGraph(AgentState)
 workflow.add_node("agent", call_model)
 workflow.add_node("tools", ToolNode(tools))
-
 workflow.set_entry_point("agent")
 
 def should_continue(state: AgentState):
@@ -134,11 +129,9 @@ app_agent = workflow.compile()
 async def get_agent_response(user_input: str):
     inputs = {"messages": [HumanMessage(content=user_input)]}
     config = {"configurable": {"thread_id": "1"}}
-    
     final_output = ""
     async for event in app_agent.astream(inputs, config=config):
         for value in event.values():
             if "messages" in value:
                 final_output = value["messages"][-1].content
-    
     return final_output
