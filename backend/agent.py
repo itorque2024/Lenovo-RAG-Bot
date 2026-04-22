@@ -55,18 +55,22 @@ def brave_search(query: str):
 # 2. RAG Tools (Product, Tech, Policy)
 def create_rag_tool(folder: str, agent_name: str):
     # Load all files in folder
-    path = os.path.join(os.path.dirname(os.path.dirname(__file__)), folder)
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), folder)
+    print(f"📂 Searching for data in: {path}")
     docs = []
     if os.path.exists(path):
         for f in os.listdir(path):
             if f.endswith(".txt"):
+                print(f"📄 Loading: {f}")
                 loader = TextLoader(os.path.join(path, f))
                 docs.extend(loader.load())
     
     if not docs:
+        print(f"⚠️ Warning: No documents found for {agent_name}")
         @tool(name=f"search_{folder}")
         def empty_tool(query: str):
-            return f"[{agent_name}]: No data files found for {folder}."
+            """Returns a warning that no data is available."""
+            return f"[{agent_name}]: No data files found for {folder} on the server."
         return empty_tool
 
     embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")

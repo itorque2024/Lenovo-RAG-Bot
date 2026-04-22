@@ -5,7 +5,7 @@ import os
 import asyncio
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from .agent import get_agent_response
+from backend.agent import get_agent_response
 
 app = FastAPI(title="Lenovo Multi-Agent RAG API")
 
@@ -41,17 +41,19 @@ async def handle_telegram_message(update: Update, context: ContextTypes.DEFAULT_
 
 async def start_telegram():
     if not TELEGRAM_TOKEN:
-        print("⚠️ Telegram token missing. Bot disabled.")
+        print("⚠️ TELEGRAM_BOT_TOKEN not found. Telegram bot disabled.")
         return
+    
     try:
         application = Application.builder().token(TELEGRAM_TOKEN).build()
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_telegram_message))
+        
         await application.initialize()
         await application.start()
         await application.updater.start_polling()
         print("🚀 Telegram Bot is polling...")
     except Exception as e:
-        print(f"❌ Failed to start Telegram bot: {e}")
+        print(f"❌ CRITICAL ERROR starting Telegram bot: {e}")
 
 @app.on_event("startup")
 async def startup_event():
