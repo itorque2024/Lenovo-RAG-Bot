@@ -59,8 +59,11 @@ def create_rag_tool(folder: str, agent_name: str, google_api_key: str):
         if not docs:
             raise ValueError(f"No documents in {folder}")
 
-        # Switched to text-embedding-004 (most stable production version)
-        embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=google_api_key)
+        # Explicitly use v1 API for stable production access
+        embeddings = GoogleGenerativeAIEmbeddings(
+            model="models/text-embedding-004", 
+            google_api_key=google_api_key
+        )
         vectorstore = FAISS.from_documents(docs, embeddings)
         retriever = vectorstore.as_retriever()
 
@@ -98,8 +101,11 @@ def initialize_agent():
     class AgentState(TypedDict):
         messages: Annotated[List[BaseMessage], lambda x, y: x + y]
 
-    # Switched to gemini-1.5-flash (most stable production version)
-    model = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=api_key)
+    # Use standard production model name
+    model = ChatGoogleGenerativeAI(
+        model="gemini-1.5-flash", 
+        google_api_key=api_key
+    )
     model_with_tools = model.bind_tools(all_tools)
 
     def call_model(state):
