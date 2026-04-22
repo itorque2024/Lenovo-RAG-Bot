@@ -50,7 +50,8 @@ async def start_telegram():
         
         await application.initialize()
         await application.start()
-        await application.updater.start_polling()
+        # Add drop_pending_updates to clear any old conflict messages
+        await application.updater.start_polling(drop_pending_updates=True, poll_interval=1.0)
         print("🚀 Telegram Bot is polling...")
     except Exception as e:
         print(f"❌ CRITICAL ERROR starting Telegram bot: {e}")

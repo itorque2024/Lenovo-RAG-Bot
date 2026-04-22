@@ -12,3 +12,4 @@ python-dotenv
 duckduckgo-search
 pydantic
 faiss-cpu
+google-generativeai
