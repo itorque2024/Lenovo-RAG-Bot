@@ -137,7 +137,7 @@ def _get_react_agent(name: str, tools: list, system_prompt: str):
     agent = create_react_agent(
         _get_llm(),
         tools=tools,
-        state_modifier=SystemMessage(content=system_prompt)
+        prompt=system_prompt
     )
     _react_agents[name] = agent
     return agent
