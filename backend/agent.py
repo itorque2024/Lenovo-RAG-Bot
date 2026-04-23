@@ -12,12 +12,12 @@ from langgraph.graph import StateGraph, END
 # ─── State ────────────────────────────────────────────────────────────────────
 
 class Task(TypedDict):
-    agent: str        # which agent handles this
-    sub_query: str    # only the portion of the question that agent should answer
+    agent: str
+    sub_query: str
 
 class AgentState(TypedDict):
-    query: str          # original full user query (kept for reference)
-    tasks: List[Task]   # decomposed sub-queries assigned to specific agents
+    query: str
+    tasks: List[Task]
     responses: List[dict]   # [{"agent": str, "text": str}]
     debug_log: str
 
@@ -46,7 +46,6 @@ def _get_llm():
 def _get_embeddings():
     global _embeddings
     if _embeddings is None:
-        # ONNX-based local embeddings — no PyTorch, no API calls, ~80MB total
         _embeddings = FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
     return _embeddings
 
@@ -74,6 +73,27 @@ def _get_retriever(folder: str):
     _retrievers[folder] = store.as_retriever()
     return _retrievers[folder]
 
+# ─── Brave Search helper (used as fallback by all RAG agents) ─────────────────
+
+def _brave_search(query: str) -> str:
+    api_key = os.getenv("BRAVE_API_KEY")
+    if not api_key:
+        return ""
+    try:
+        res = requests.get(
+            "https://api.search.brave.com/res/v1/web/search",
+            headers={"Accept": "application/json", "X-Subscription-Token": api_key},
+            params={"q": query, "count": 3},
+            timeout=10
+        )
+        results = res.json().get("web", {}).get("results", [])
+        return "\n".join(
+            f"- {r['title']}: {r.get('description', '')} ({r['url']})"
+            for r in results
+        )
+    except Exception:
+        return ""
+
 # ─── Router Node ──────────────────────────────────────────────────────────────
 
 def router_node(state: AgentState) -> dict:
@@ -87,6 +107,7 @@ Available agents:
 - policy_agent   : delivery, shipping, returns, refunds, warranty policy, payment
 - finance_agent  : currency conversion, price in SGD / USD / EUR or any other currency
 - search_agent   : current news, latest releases, real-time info not in local data
+- general_agent  : greetings, small talk, general questions, anything not covered above
 
 Rules:
 - Split multi-part questions so each agent only receives the portion it should answer
@@ -98,17 +119,16 @@ Example output:
 product_agent|What is the price of the X1 Carbon?
 policy_agent|What is the return policy?
 
-Example input: "How do I fix my ThinkPad screen and convert 1500 USD to SGD?"
+Example input: "Hi, how are you?"
 Example output:
-tech_agent|How do I fix my ThinkPad screen?
-finance_agent|Convert 1500 USD to SGD"""
+general_agent|Hi, how are you?"""
 
     res = _get_llm().invoke([
         SystemMessage(content=router_prompt),
         HumanMessage(content=state["query"])
     ])
 
-    valid = {"product_agent", "tech_agent", "policy_agent", "finance_agent", "search_agent"}
+    valid = {"product_agent", "tech_agent", "policy_agent", "finance_agent", "search_agent", "general_agent"}
     tasks: List[Task] = []
 
     for line in res.content.strip().splitlines():
@@ -121,9 +141,8 @@ finance_agent|Convert 1500 USD to SGD"""
         if agent in valid and sub_query:
             tasks.append({"agent": agent, "sub_query": sub_query})
 
-    # Fallback if parsing fails
     if not tasks:
-        tasks = [{"agent": "product_agent", "sub_query": state["query"]}]
+        tasks = [{"agent": "general_agent", "sub_query": state["query"]}]
 
     agents_listed = ", ".join(t["agent"] for t in tasks)
     return {
@@ -139,10 +158,9 @@ def _route_next(state: AgentState) -> str:
     done = len(state.get("responses", []))
     return tasks[done]["agent"] if done < len(tasks) else END
 
-# ─── RAG helper ───────────────────────────────────────────────────────────────
+# ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def _current_sub_query(state: AgentState) -> str:
-    """Returns the sub-query meant for the current agent (not the full query)."""
     done = len(state.get("responses", []))
     tasks = state.get("tasks", [])
     if done < len(tasks):
@@ -155,14 +173,25 @@ def _rag_node(state: AgentState, agent_name: str, folder: str, persona: str) -> 
     retriever = _get_retriever(folder)
 
     context = ""
-    doc_count = 0
+    source_note = ""
+
+    # Try local RAG first
     if retriever:
         docs = retriever.invoke(sub_query)
         context = "\n\n".join(d.page_content for d in docs)
-        doc_count = len(docs)
+        source_note = f"{len(docs)} local docs"
+
+    # Fall back to Brave Search if local data is empty
+    if not context.strip():
+        web_results = _brave_search(sub_query)
+        if web_results:
+            context = web_results
+            source_note = "Brave web search (no local data found)"
+        else:
+            source_note = "no data found"
 
     system_prompt = f"""You are the {persona} for Lenovo.
-Answer using ONLY the context below. If the answer is not in the context, say so clearly.
+Answer using the context below. If the answer is not in the context, say so clearly.
 
 Context:
 {context}"""
@@ -176,7 +205,7 @@ Context:
     responses.append({"agent": agent_name, "text": res.content})
     return {
         "responses": responses,
-        "debug_log": state.get("debug_log", "") + f"\n✅ {agent_name} ← \"{sub_query}\" ({doc_count} docs)"
+        "debug_log": state.get("debug_log", "") + f"\n✅ {agent_name} ← \"{sub_query}\" ({source_note})"
     }
 
 # ─── Agent Nodes ──────────────────────────────────────────────────────────────
@@ -255,6 +284,27 @@ def search_agent_node(state: AgentState) -> dict:
         "debug_log": state.get("debug_log", "") + f"\n✅ Search Agent ← \"{sub_query}\""
     }
 
+
+def general_agent_node(state: AgentState) -> dict:
+    sub_query = _current_sub_query(state)
+
+    res = _get_llm().invoke([
+        SystemMessage(content=(
+            "You are a friendly assistant for Lenovo. "
+            "Answer general questions, greetings, and small talk helpfully. "
+            "If the question is Lenovo-related but you are unsure, say so and suggest "
+            "the user ask about products, tech support, or policies specifically."
+        )),
+        HumanMessage(content=sub_query)
+    ])
+
+    responses = list(state.get("responses", []))
+    responses.append({"agent": "General Agent", "text": res.content})
+    return {
+        "responses": responses,
+        "debug_log": state.get("debug_log", "") + f"\n✅ General Agent ← \"{sub_query}\""
+    }
+
 # ─── Graph ────────────────────────────────────────────────────────────────────
 
 def initialize_agent():
@@ -272,10 +322,11 @@ def initialize_agent():
     wf.add_node("policy_agent", policy_agent_node)
     wf.add_node("finance_agent", finance_agent_node)
     wf.add_node("search_agent", search_agent_node)
+    wf.add_node("general_agent", general_agent_node)
 
     wf.set_entry_point("router")
     wf.add_conditional_edges("router", _route_next)
-    for node in ("product_agent", "tech_agent", "policy_agent", "finance_agent", "search_agent"):
+    for node in ("product_agent", "tech_agent", "policy_agent", "finance_agent", "search_agent", "general_agent"):
         wf.add_conditional_edges(node, _route_next)
 
     _graph = wf.compile()
