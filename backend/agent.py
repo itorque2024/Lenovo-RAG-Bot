@@ -4,10 +4,12 @@ from typing import List, TypedDict
 
 from langchain_groq import ChatGroq
 from langchain_community.embeddings import FastEmbedEmbeddings
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from langchain_core.tools import tool
 from langchain_community.document_loaders import TextLoader
 from langchain_community.vectorstores import FAISS
 from langgraph.graph import StateGraph, END
+from langgraph.prebuilt import create_react_agent
 
 # ─── State ────────────────────────────────────────────────────────────────────
 
@@ -18,7 +20,7 @@ class Task(TypedDict):
 class AgentState(TypedDict):
     query: str
     tasks: List[Task]
-    responses: List[dict]   # [{"agent": str, "text": str}]
+    responses: List[dict]
     debug_log: str
 
 # ─── Singletons ───────────────────────────────────────────────────────────────
@@ -26,6 +28,7 @@ class AgentState(TypedDict):
 _llm = None
 _embeddings = None
 _retrievers: dict = {}
+_react_agents: dict = {}
 _graph = None
 
 
@@ -73,12 +76,44 @@ def _get_retriever(folder: str):
     _retrievers[folder] = store.as_retriever()
     return _retrievers[folder]
 
-# ─── Brave Search helper (used as fallback by all RAG agents) ─────────────────
+# ─── Tools ────────────────────────────────────────────────────────────────────
 
-def _brave_search(query: str) -> str:
+@tool("product_rag_search")
+def product_rag_search(query: str) -> str:
+    """Search Lenovo internal product catalog for specs, prices, models, and availability."""
+    retriever = _get_retriever("product")
+    if not retriever:
+        return "No local product data available."
+    docs = retriever.invoke(query)
+    return "\n\n".join(d.page_content for d in docs) if docs else "No matching results in local product data."
+
+
+@tool("tech_rag_search")
+def tech_rag_search(query: str) -> str:
+    """Search Lenovo internal technical support documents for troubleshooting and how-to guides."""
+    retriever = _get_retriever("tech")
+    if not retriever:
+        return "No local tech support data available."
+    docs = retriever.invoke(query)
+    return "\n\n".join(d.page_content for d in docs) if docs else "No matching results in local tech data."
+
+
+@tool("policy_rag_search")
+def policy_rag_search(query: str) -> str:
+    """Search Lenovo internal policy documents for delivery, returns, refunds, and warranty info."""
+    retriever = _get_retriever("policy")
+    if not retriever:
+        return "No local policy data available."
+    docs = retriever.invoke(query)
+    return "\n\n".join(d.page_content for d in docs) if docs else "No matching results in local policy data."
+
+
+@tool("brave_web_search")
+def brave_web_search(query: str) -> str:
+    """Search the web for current Lenovo information, news, or anything not found in local data."""
     api_key = os.getenv("BRAVE_API_KEY")
     if not api_key:
-        return ""
+        return "Web search is unavailable (Brave API key not configured)."
     try:
         res = requests.get(
             "https://api.search.brave.com/res/v1/web/search",
@@ -90,9 +125,30 @@ def _brave_search(query: str) -> str:
         return "\n".join(
             f"- {r['title']}: {r.get('description', '')} ({r['url']})"
             for r in results
-        )
-    except Exception:
-        return ""
+        ) or "No web results found."
+    except Exception as e:
+        return f"Search error: {e}"
+
+# ─── ReAct agent factory ──────────────────────────────────────────────────────
+
+def _get_react_agent(name: str, tools: list, system_prompt: str):
+    if name in _react_agents:
+        return _react_agents[name]
+    agent = create_react_agent(
+        _get_llm(),
+        tools=tools,
+        state_modifier=SystemMessage(content=system_prompt)
+    )
+    _react_agents[name] = agent
+    return agent
+
+
+def _extract_response(result: dict) -> str:
+    """Pull the final text answer out of a create_react_agent result."""
+    for msg in reversed(result.get("messages", [])):
+        if isinstance(msg, AIMessage) and msg.content and not getattr(msg, "tool_calls", []):
+            return msg.content
+    return "No response generated."
 
 # ─── Router Node ──────────────────────────────────────────────────────────────
 
@@ -158,68 +214,83 @@ def _route_next(state: AgentState) -> str:
     done = len(state.get("responses", []))
     return tasks[done]["agent"] if done < len(tasks) else END
 
-# ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def _current_sub_query(state: AgentState) -> str:
     done = len(state.get("responses", []))
     tasks = state.get("tasks", [])
-    if done < len(tasks):
-        return tasks[done]["sub_query"]
-    return state["query"]
-
-
-def _rag_node(state: AgentState, agent_name: str, folder: str, persona: str) -> dict:
-    sub_query = _current_sub_query(state)
-    retriever = _get_retriever(folder)
-
-    context = ""
-    source_note = ""
-
-    # Try local RAG first
-    if retriever:
-        docs = retriever.invoke(sub_query)
-        context = "\n\n".join(d.page_content for d in docs)
-        source_note = f"{len(docs)} local docs"
-
-    # Fall back to Brave Search if local data is empty
-    if not context.strip():
-        web_results = _brave_search(sub_query)
-        if web_results:
-            context = web_results
-            source_note = "Brave web search (no local data found)"
-        else:
-            source_note = "no data found"
-
-    system_prompt = f"""You are the {persona} for Lenovo.
-Answer using the context below. If the answer is not in the context, say so clearly.
-
-Context:
-{context}"""
-
-    res = _get_llm().invoke([
-        SystemMessage(content=system_prompt),
-        HumanMessage(content=sub_query)
-    ])
-
-    responses = list(state.get("responses", []))
-    responses.append({"agent": agent_name, "text": res.content})
-    return {
-        "responses": responses,
-        "debug_log": state.get("debug_log", "") + f"\n✅ {agent_name} ← \"{sub_query}\" ({source_note})"
-    }
+    return tasks[done]["sub_query"] if done < len(tasks) else state["query"]
 
 # ─── Agent Nodes ──────────────────────────────────────────────────────────────
 
 def product_agent_node(state: AgentState) -> dict:
-    return _rag_node(state, "Product Agent", "product", "Product Sales Expert")
+    sub_query = _current_sub_query(state)
+    agent = _get_react_agent(
+        "product",
+        tools=[product_rag_search, brave_web_search],
+        system_prompt="""You are the Product Sales Expert for Lenovo.
+Answer questions about Lenovo product specs, prices, models, and availability.
+
+Tool usage:
+- Use product_rag_search FIRST for any product question
+- If the local results are empty or insufficient, use brave_web_search
+- You may use both tools to give a complete, accurate answer
+- Always base your answer on what the tools return"""
+    )
+    result = agent.invoke({"messages": [HumanMessage(content=sub_query)]})
+    text = _extract_response(result)
+    responses = list(state.get("responses", []))
+    responses.append({"agent": "Product Agent", "text": text})
+    return {
+        "responses": responses,
+        "debug_log": state.get("debug_log", "") + f"\n✅ Product Agent ← \"{sub_query}\""
+    }
 
 
 def tech_agent_node(state: AgentState) -> dict:
-    return _rag_node(state, "Tech Agent", "tech", "Technical Support Specialist")
+    sub_query = _current_sub_query(state)
+    agent = _get_react_agent(
+        "tech",
+        tools=[tech_rag_search, brave_web_search],
+        system_prompt="""You are the Technical Support Specialist for Lenovo.
+Answer troubleshooting, repair, driver, and how-to questions.
+
+Tool usage:
+- Use tech_rag_search FIRST for any technical question
+- If the local results are empty or insufficient, use brave_web_search for updated guides
+- You may use both tools for a thorough answer
+- Give safe, step-by-step instructions when relevant"""
+    )
+    result = agent.invoke({"messages": [HumanMessage(content=sub_query)]})
+    text = _extract_response(result)
+    responses = list(state.get("responses", []))
+    responses.append({"agent": "Tech Agent", "text": text})
+    return {
+        "responses": responses,
+        "debug_log": state.get("debug_log", "") + f"\n✅ Tech Agent ← \"{sub_query}\""
+    }
 
 
 def policy_agent_node(state: AgentState) -> dict:
-    return _rag_node(state, "Policy Agent", "policy", "Customer Support Specialist")
+    sub_query = _current_sub_query(state)
+    agent = _get_react_agent(
+        "policy",
+        tools=[policy_rag_search, brave_web_search],
+        system_prompt="""You are the Customer Support Specialist for Lenovo.
+Answer questions about delivery, returns, refunds, warranty, and payment policies.
+
+Tool usage:
+- Use policy_rag_search FIRST for any policy question
+- If the local results are empty or insufficient, use brave_web_search
+- If policy information cannot be found, clearly say so and advise the user to contact Lenovo support"""
+    )
+    result = agent.invoke({"messages": [HumanMessage(content=sub_query)]})
+    text = _extract_response(result)
+    responses = list(state.get("responses", []))
+    responses.append({"agent": "Policy Agent", "text": text})
+    return {
+        "responses": responses,
+        "debug_log": state.get("debug_log", "") + f"\n✅ Policy Agent ← \"{sub_query}\""
+    }
 
 
 def finance_agent_node(state: AgentState) -> dict:
@@ -257,26 +328,7 @@ def finance_agent_node(state: AgentState) -> dict:
 
 def search_agent_node(state: AgentState) -> dict:
     sub_query = _current_sub_query(state)
-    api_key = os.getenv("BRAVE_API_KEY")
-
-    if not api_key:
-        text = "Web search is unavailable (Brave API key not configured)."
-    else:
-        try:
-            res = requests.get(
-                "https://api.search.brave.com/res/v1/web/search",
-                headers={"Accept": "application/json", "X-Subscription-Token": api_key},
-                params={"q": sub_query, "count": 3},
-                timeout=10
-            )
-            results = res.json().get("web", {}).get("results", [])
-            text = "\n".join(
-                f"- **{r['title']}**: {r.get('description', '')} ({r['url']})"
-                for r in results
-            ) or "No results found."
-        except Exception as e:
-            text = f"Search error: {e}"
-
+    text = brave_web_search.invoke(sub_query)
     responses = list(state.get("responses", []))
     responses.append({"agent": "Search Agent", "text": text})
     return {
@@ -287,19 +339,21 @@ def search_agent_node(state: AgentState) -> dict:
 
 def general_agent_node(state: AgentState) -> dict:
     sub_query = _current_sub_query(state)
+    agent = _get_react_agent(
+        "general",
+        tools=[brave_web_search],
+        system_prompt="""You are a friendly assistant for Lenovo.
+Handle greetings, small talk, and general questions helpfully.
 
-    res = _get_llm().invoke([
-        SystemMessage(content=(
-            "You are a friendly assistant for Lenovo. "
-            "Answer general questions, greetings, and small talk helpfully. "
-            "If the question is Lenovo-related but you are unsure, say so and suggest "
-            "the user ask about products, tech support, or policies specifically."
-        )),
-        HumanMessage(content=sub_query)
-    ])
-
+Tool usage:
+- Use brave_web_search if the question needs current or factual information you are unsure about
+- For simple greetings or small talk, answer directly without using tools
+- If the question is Lenovo-related, suggest the user ask about products, tech support, or policies"""
+    )
+    result = agent.invoke({"messages": [HumanMessage(content=sub_query)]})
+    text = _extract_response(result)
     responses = list(state.get("responses", []))
-    responses.append({"agent": "General Agent", "text": res.content})
+    responses.append({"agent": "General Agent", "text": text})
     return {
         "responses": responses,
         "debug_log": state.get("debug_log", "") + f"\n✅ General Agent ← \"{sub_query}\""
