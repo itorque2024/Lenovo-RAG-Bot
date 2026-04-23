@@ -31,7 +31,7 @@ with gr.Blocks(title="Lenovo AI Assistant") as demo:
     gr.Markdown("# Lenovo AI Multi-Agent Assistant")
     gr.Markdown("Powered by **Groq + LangGraph** · Ask about products, tech support, policies, or pricing.")
 
-    chatbot = gr.Chatbot(height=500, type="messages")
+    chatbot = gr.Chatbot(height=500)
 
     with gr.Row():
         msg_box = gr.Textbox(
