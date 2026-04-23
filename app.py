@@ -21,14 +21,17 @@ def respond(message, history):
     except Exception as e:
         bot_reply = f"⚠️ **Error connecting to backend:** {e}"
 
-    history = history + [[message, bot_reply]]
+    history = history + [
+        {"role": "user", "content": message},
+        {"role": "assistant", "content": bot_reply}
+    ]
     return history, ""
 
 with gr.Blocks(title="Lenovo AI Assistant") as demo:
     gr.Markdown("# Lenovo AI Multi-Agent Assistant")
     gr.Markdown("Powered by **Groq + LangGraph** · Ask about products, tech support, policies, or pricing.")
 
-    chatbot = gr.Chatbot(height=500)
+    chatbot = gr.Chatbot(height=500, type="messages")
 
     with gr.Row():
         msg_box = gr.Textbox(
